@@ -1,0 +1,9 @@
+tests
+  * more EMAs/variance tests
+  * tickAtStartOfBlock
+
+docs
+  * natspec
+  * raw access to ring buffer
+  * extendRingBuffer
+  * regen plots

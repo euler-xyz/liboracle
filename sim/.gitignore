@@ -1,0 +1,7 @@
+/artifacts/
+/cache/
+/node_modules/
+/package-lock.json
+/crawl-uniswap/bq-results*
+/crawl-uniswap/results.db*
+*.csv
