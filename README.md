@@ -14,11 +14,11 @@ Updating the oracle is divided into 3 phases:
 
     LibOracle.OracleUpdateSet memory us = oracleGetUpdateSet(oc);
 
-    // Phase 3: Write the updates out to storage:
+    // Phase 3: Write the updates out to storage along with a new tick:
 
     oracleUpdate(oc, us, newTick);
 
-The `OracleUpdateSet` contains up-to-date moving averages, variances, and `tickAtStartOfBlock` so these can be used to influence an AMM, if desired.
+The `OracleUpdateSet` contains up-to-date moving averages, variances, and `tickAtStartOfBlock` so these can be used to parameterise an AMM, if desired.
 
 Finally, once a new tick has been determined by the implementing contract, the updated values are written out to storage, as well as to the ring buffer (if applicable).
 
@@ -30,7 +30,7 @@ In uniswap3 terminology, a "tick" refers to a log-space, quantised price-ratio b
 
 * *Price ratio*: Given two assets, a price can be considered as a ratio (or fraction). For example, consider ETH and USD. If 1500 USD will get you 1 ETH, then the price ratio would be `1500/1` or `1/1500`, depending on which asset you select as your base/quote. Because usually it's inconvenient to work with fractions, we represent this instead as a number, for example `1500`, or `0.0006666...`
 * *Log-space*: The price ratio numbers can get very large/small, especially considering some tokens have different decimal values. In order to keep them within a reasonable range, we use the logarithms of the price ratios. For example, `ln(1500/1) = 7.313...` and `ln(1/1500) = -7.313...`. A very appealing property of logarithms is that inverting a price ratio is equivalent to negating its logarithm. There are several other benefits to using log-space that we will describe below.
-* *Quantised*: Because we can't store our prices to an unlimited precision, we need to round their values to the nearest representable value. Using the previous example, we might round `7.313...` to `7.3`. Although this loses some precision, this loss can be quantified and maintained to an acceptable level. Note that this rounding operation is the source of the name "tick": Imagine the ticks on a chart as being discrete values that data-points must conform to.
+* *Quantised*: Because we can't store our prices to an unlimited precision, we need to round their values to the nearest representable value. Using the previous example, we might round `7.313...` to `7.3`. Although this loses some precision, this loss can be quantified and maintained at an acceptable level. Note that this rounding operation is the source of the name "tick": Imagine the ticks on a chart as being evenly-spaced discrete values that data-points must conform to.
 
 ### Uniswap3 Ticks
 
@@ -46,22 +46,22 @@ From these we can derive `MAX_TICK`:
     MAX_TICK = ln(2**128) / ln(1.0001)
     MAX_TICK = 887272.7517...
 
-Uniswap3 stores ticks in `int24` variables, which have plenty of room since these tick values only contain about 20.8 bits of information:
+Uniswap3 stores each tick as an `int24` type, which is more than large enough since Uniswap3 tick values contain about 20.8 bits of information:
 
     ln(887272 * 2 + 1)/ln(2) = 20.759...
 
 ### LibOracle Ticks
 
-Since LibOracle is attempting to get the maximum benefit out of a limited storage space, our ticks begin with slightly different requirements:
+Since LibOracle is attempting to squeeze the maximum benefit out of a limited storage space, our ticks begin with slightly different requirements:
 
 * Price ratios between `1/2**128` and `2**128` should be supported.
 * It should maximise information density while fitting into an `int24`
 
 So our `MAX_TICK` value is chosen to be `2**23 - 256` and `MIN_TICK` is the negation: `-8388352` and `8388352`.
 
-The subtracting of 256 is done to allow round-tripping through "small" ticks (see below).
+(Subtracting 256 is done to allow round-tripping through "small" ticks, described below)
 
-These ticks have a higher information density within `int24`s:
+LibOracle ticks have a higher information density within `int24`s:
 
     ln((2**23 - 256) * 2 + 1)/ln(2) = 23.99995605...
 
@@ -77,7 +77,7 @@ It is approximately `0.001%`.
 
 ### Small Ticks
 
-Internally, LibOracle quantises these ticks down further into `int16`s for storage in its ring buffer. Essentially it divides the tick values by `256` and then truncates (actually it adds or subtracts `128` first, to implement rounding -- this is a mid-step quantisation).
+Internally, LibOracle quantises these ticks down further into `int16`s for storage in its ring buffer. Essentially it divides the tick values by `256` and then rounds (it adds or subtracts `128` and then truncates -- this is a mid-step quantisation).
 
 Small ticks have minimum and maximum vaues of `-32767` and `32767`, providing the following density:
 
@@ -100,14 +100,14 @@ One useful property of logarithms is that it is very easy to convert bases. For 
 
 Javascript is unable to represent the `B` value to enough precision, so this conversion is approximate (but good enough for plotting).
 
-For on-chain implementations, note that this is equivalent to simply multiplying by `9.454084984590639502`.
+For on-chain implementations, note that this is approximately equivalent to simply multiplying by `9.454084984590639502`.
 
 
 
 
 ## Moving Average and Variance
 
-Although the ring buffer oracle can provide a geometric time-weighted average, for some applications querying this data structure can be too expensive. In particular, an AMM that implements LibOracle might like to use a moving average of a price to influence the behaviour of swaps, and the AMM might not be competitive if swapping could consume a large and/or unpredictable amount of gas.
+Although the ring buffer oracle can provide a geometric time-weighted average, for some applications querying this data structure can be too expensive. In particular, an AMM that implements LibOracle might want to use a moving average of a price to influence the behaviour of swaps (as in Curve2 for example), and the AMM might not be competitive if swapping could consume a large and/or unpredictable amount of gas.
 
 Additionally, for some AMM designs it may be useful to know the variance (or standard deviation) of a price over a time period.
 
@@ -123,11 +123,11 @@ An EMA works by maintaining an accumulator value that "decays" over time as it i
 
     alpha = e**(-elapsed / window)
 
-LibOracle uses `e` as the base of the exponent, but other bases will also work. The nice feature of the `e` is that if the initial decay rate remained constant, then the decay would be exactly complete after 1 window's duration. Of course, this doesn't happen because the rate of decay reduces with the magnitude.
+LibOracle uses `e` as the base of the exponent, but other bases will also work. The nice feature of `e` is that if the initial decay rate remained constant, then the decay would be exactly complete after 1 window's duration. Of course, this doesn't happen because the rate of decay reduces with the magnitude and after 1 window the magnitude is reduced to `1/e = 0.367879...`.
 
 An important feature of exponential decay is that the decay is unaffected by the frequency of updates to the accumulator. This means that the reported moving averages will be unaffected by the amount of activity tracked by the oracle. Additionally, in cases where the tick doesn't change in an update, there is no need to spend the gas to update the accumulator -- it can be put off until needed.
 
-Variance is also tracked through a slight modification the above process.
+Variance is also tracked through a slight modification of the above process.
 
 ### Variance/Standard Deviation
 
