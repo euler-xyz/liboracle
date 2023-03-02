@@ -71,6 +71,7 @@ contract LibOracle {
             if (newTick != oc.currTick) {
                 (oc.shortMean, oc.shortVariance) = (us.shortMean, us.shortVariance);
                 (oc.longMean, oc.longVariance) = (us.longMean, us.longVariance);
+                oc.tickAtStartOfBlock = us.tickAtStartOfBlock;
 
                 uint elapsed = block.timestamp - oc.lastUpdate;
 
