@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import "./Math.sol";
-import { LibOracleUtils as Utils } from "../src/LibOracleUtils.sol";
+import { LibOracleUtils as Utils } from "./LibOracleUtils.sol";
 import "./WeightedMedian.sol";
 
 
